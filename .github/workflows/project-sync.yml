@@ -1,0 +1,26 @@
+name: Sync GitHub Project
+
+on:
+  workflow_call:
+    secrets:
+      PROJECT_TOKEN:
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify token and project access
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          gh api graphql -f query='
+          {
+            user(login:"mauriciogofas"){
+              projectV2(number:4){
+                id
+                title
+              }
+            }
+          }'
