@@ -2,6 +2,9 @@ name: Sync GitHub Project
 
 on:
   workflow_call:
+    secrets:
+      PROJECT_TOKEN:
+        required: true
 
 jobs:
   sync:
