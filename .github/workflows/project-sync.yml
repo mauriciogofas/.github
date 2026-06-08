@@ -1,0 +1,11 @@
+name: Sync GitHub Project
+
+on:
+  workflow_call:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "Project sync workflow placeholder"
