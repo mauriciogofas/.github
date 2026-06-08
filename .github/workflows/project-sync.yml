@@ -8,4 +8,5 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - run: echo "Project sync workflow placeholder"
+      - run: |
+          echo "Placeholder - substituir pela versão final após validar PROJECT_TOKEN"
