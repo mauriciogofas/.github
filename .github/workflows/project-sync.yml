@@ -8,5 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - run: |
-          echo "Placeholder - substituir pela versão final após validar PROJECT_TOKEN"
+      - name: Verify token and project access
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          gh api graphql -f query='
+          {
+            user(login:"mauriciogofas"){
+              projectV2(number:4){
+                id
+                title
+              }
+            }
+          }'
