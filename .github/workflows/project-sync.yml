@@ -26,15 +26,34 @@ jobs:
           STATUS_REALIZAR="f75ad846"
           STATUS_REALIZADO="98236657"
 
+          # Extrair owner/repo/number da URL
+          OWNER=$(echo "$ISSUE_URL" | cut -d'/' -f4)
+          REPO=$(echo "$ISSUE_URL" | cut -d'/' -f5)
+          NUMBER=$(echo "$ISSUE_URL" | cut -d'/' -f7)
+
+          # Buscar node_id do issue
+          NODE_ID=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issue(number:$number) { id }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f repo="$REPO" \
+            -F number="$NUMBER" \
+            --jq '.data.repository.issue.id')
+
+          echo "Node ID: $NODE_ID"
+
           ITEM_ID=$(gh api graphql -f query='
-            mutation($project:ID!, $url:String!) {
-              addProjectV2ItemByUrl(
-                input: {projectId: $project, contentUrl: $url}
+            mutation($project:ID!, $contentId:ID!) {
+              addProjectV2ItemById(
+                input: {projectId: $project, contentId: $contentId}
               ) { item { id } }
             }' \
             -f project="$PROJECT_ID" \
-            -f url="$ISSUE_URL" \
-            --jq '.data.addProjectV2ItemByUrl.item.id')
+            -f contentId="$NODE_ID" \
+            --jq '.data.addProjectV2ItemById.item.id')
 
           echo "Item ID: $ITEM_ID"
 
