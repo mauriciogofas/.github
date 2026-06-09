@@ -14,11 +14,14 @@ jobs:
         with:
           fetch-depth: 0
           ref: master
+          token: ${{ secrets.PROJECT_TOKEN }}
 
       - name: Auto generate changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
         uses: charmixer/auto-changelog-action@v1.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PROJECT_TOKEN }}
           output: changelog.md
           date_format: '%d/%m/%Y'
 
