@@ -9,6 +9,9 @@ on:
       issue_state:
         required: false
         type: string
+      issue_action:
+        required: false
+        type: string
 
 jobs:
   sync:
@@ -20,18 +23,18 @@ jobs:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           ISSUE_URL: ${{ inputs.issue_url }}
           ISSUE_STATE: ${{ inputs.issue_state }}
+          ISSUE_ACTION: ${{ inputs.issue_action }}
         run: |
           PROJECT_ID="PVT_kwHOAHMMY84BZclp"
           STATUS_FIELD="PVTSSF_lAHOAHMMY84BZclpzhUbK4Y"
           STATUS_REALIZAR="f75ad846"
+          STATUS_EM_ANDAMENTO="47fc9ee4"
           STATUS_REALIZADO="98236657"
 
-          # Extrair owner/repo/number da URL
           OWNER=$(echo "$ISSUE_URL" | cut -d'/' -f4)
           REPO=$(echo "$ISSUE_URL" | cut -d'/' -f5)
           NUMBER=$(echo "$ISSUE_URL" | cut -d'/' -f7)
 
-          # Buscar node_id do issue
           NODE_ID=$(gh api graphql -f query='
             query($owner:String!, $repo:String!, $number:Int!) {
               repository(owner:$owner, name:$repo) {
@@ -57,11 +60,15 @@ jobs:
 
           echo "Item ID: $ITEM_ID"
 
-          if [ "$ISSUE_STATE" = "closed" ]; then
+          if [ "$ISSUE_ACTION" = "closed" ]; then
             OPTION="$STATUS_REALIZADO"
+          elif [ "$ISSUE_ACTION" = "reopened" ]; then
+            OPTION="$STATUS_EM_ANDAMENTO"
           else
             OPTION="$STATUS_REALIZAR"
           fi
+
+          echo "Action: $ISSUE_ACTION -> Option: $OPTION"
 
           gh api graphql -f query='
             mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
