@@ -14,10 +14,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
 
+    env:
+      GH_TOKEN: ${{ vars.PROJECT_TOKEN }}
+
     steps:
       - name: Add issue to Project 4 and update status
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           ISSUE_URL: ${{ inputs.issue_url }}
           ISSUE_STATE: ${{ inputs.issue_state }}
         run: |
@@ -28,7 +30,7 @@ jobs:
 
           ITEM_ID=$(gh api graphql -f query='
             mutation($project:ID!, $url:String!) {
-              addProjectV2ItemByUrl: addProjectV2ItemByUrl(
+              addProjectV2ItemByUrl(
                 input: {projectId: $project, contentUrl: $url}
               ) { item { id } }
             }' \
