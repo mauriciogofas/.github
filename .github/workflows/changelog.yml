@@ -12,21 +12,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PROJECT_TOKEN }}
+          fetch-depth: 0
           ref: master
 
       - name: Auto generate changelog
         uses: charmixer/auto-changelog-action@v1.2
         with:
-          token: ${{ secrets.PROJECT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           output: changelog.md
           date_format: '%d/%m/%Y'
 
       - name: Commit and push
+        env:
+          PUSH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
         run: |
           git config user.email "mauricio@gofas.net"
           git config user.name "mauriciogofas"
           git add changelog.md
-          git diff --staged --quiet && echo "No changes" && exit 0
+          git diff --staged --quiet && echo "No changes to changelog.md" && exit 0
           git commit -m 'ci: update changelog.md'
-          git push "https://mauriciogofas:${{ secrets.PROJECT_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:master
+          git push "https://mauriciogofas:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:master
