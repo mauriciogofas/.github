@@ -12,10 +12,6 @@ on:
       git_email:
         required: true
         type: string
-      label_map:
-        required: false
-        type: string
-        default: ''
       section_map:
         required: false
         type: string
@@ -37,7 +33,6 @@ jobs:
       - name: Generate changelog from issues
         env:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-          LABEL_MAP: ${{ inputs.label_map }}
           SECTION_MAP: ${{ inputs.section_map }}
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -46,221 +41,181 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
 
-          # Buscar todas as releases ordenadas por data
           ALL_RELEASES=$(gh api repos/$REPO/releases --paginate \
             --jq '[.[] | {tag: .tag_name, date: .published_at}] | sort_by(.date)' 2>/dev/null || echo "[]")
 
           REPO_LABELS=$(gh api repos/$REPO/labels --paginate \
             --jq '[.[] | {name: .name, color: .color}] | tostring')
 
-          python3 << PYEOF
-          import json, os, sys, re
-          from urllib.parse import quote
-          from datetime import datetime
+          python3 - << PYEOF
+import json, os, sys, re, subprocess
+from urllib.parse import quote
+from datetime import datetime
 
-          repo = "$REPO"
-          event_name = os.environ.get("EVENT_NAME", "")
-          release_tag = os.environ.get("RELEASE_TAG", "")
-          release_name = os.environ.get("RELEASE_NAME", "")
-          release_date_raw = os.environ.get("RELEASE_DATE", "")
-          label_map_raw = os.environ.get("LABEL_MAP", "")
-          section_map_raw = os.environ.get("SECTION_MAP", "")
-          all_releases_raw = """$ALL_RELEASES"""
-          repo_labels_raw = """$REPO_LABELS"""
+repo = "$REPO"
+event_name = os.environ.get("EVENT_NAME", "")
+release_tag = os.environ.get("RELEASE_TAG", "")
+release_name = os.environ.get("RELEASE_NAME", "")
+release_date_raw = os.environ.get("RELEASE_DATE", "")
+section_map_raw = os.environ.get("SECTION_MAP", "")
+all_releases_raw = r"""$ALL_RELEASES"""
+repo_labels_raw = r"""$REPO_LABELS"""
 
-          # label_map: renomeia o texto do badge
-          label_map = {}
-          if label_map_raw.strip():
-              try:
-                  label_map = json.loads(label_map_raw)
-              except:
-                  pass
+default_section_map = {
+    "enhancement": "Melhorias",
+    "bug": "Correções",
+    "documentation": "Documentação",
+    "duplicate": "Duplicados",
+    "good first issue": "Boas entradas",
+    "help wanted": "Precisa de ajuda",
+    "invalid": "Inválidos",
+    "question": "Dúvidas",
+    "wontfix": "Não será corrigido",
+}
+section_map = dict(default_section_map)
+if section_map_raw.strip():
+    try:
+        section_map.update(json.loads(section_map_raw))
+    except:
+        pass
 
-          # section_map: título da seção
-          default_section_map = {
-              "enhancement": "Melhorias",
-              "bug": "Correções",
-              "documentation": "Documentação",
-              "duplicate": "Duplicados",
-              "good first issue": "Boas entradas",
-              "help wanted": "Precisa de ajuda",
-              "invalid": "Inválidos",
-              "question": "Dúvidas",
-              "wontfix": "Não será corrigido",
-          }
-          section_map = dict(default_section_map)
-          if section_map_raw.strip():
-              try:
-                  section_map.update(json.loads(section_map_raw))
-              except:
-                  pass
+repo_labels = {}
+try:
+    for l in json.loads(repo_labels_raw):
+        repo_labels[l["name"]] = l["color"]
+except:
+    pass
 
-          # Labels do repo
-          repo_labels = {}
-          try:
-              for l in json.loads(repo_labels_raw):
-                  repo_labels[l["name"]] = l["color"]
-          except:
-              pass
+ordered_labels = list(default_section_map.keys())
+extra_labels = [l for l in repo_labels if l not in ordered_labels]
+label_order = ordered_labels + extra_labels
 
-          # Ordem de prioridade das seções
-          ordered_labels = list(default_section_map.keys())
-          extra_labels = [l for l in repo_labels if l not in ordered_labels]
-          label_order = ordered_labels + extra_labels
+all_releases = []
+try:
+    all_releases = json.loads(all_releases_raw)
+except:
+    pass
 
-          # Todas as releases ordenadas por data
-          all_releases = []
-          try:
-              all_releases = json.loads(all_releases_raw)
-          except:
-              pass
+def label_tag(name):
+    return f"`{name}`"
 
-          def badge(name, color):
-              display = label_map.get(name, name)
-              safe = quote(display.replace("-", "--").replace("_", "__").replace(" ", "_"))
-              hex_color = color.lstrip("#").upper()
-              if len(hex_color) not in (3, 6):
-                  hex_color = "555555"
-              filter_url = f"https://github.com/{repo}/issues?q=is%3Aissue+state%3Aclosed+label%3A{quote(name)}"
-              return f"[![{display}](https://img.shields.io/badge/{safe}-{hex_color}?style=flat&labelColor={hex_color}&color={hex_color})]({filter_url})"
+def fetch_issues(since=None, until=None):
+    url = f"repos/{repo}/issues?state=closed&per_page=100"
+    if since:
+        url += f"&since={since}"
+    result = subprocess.run(
+        ["gh", "api", url, "--paginate", "--jq",
+         '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, closed_at: .closed_at, labels: [.labels[] | {name: .name, color: .color}]}'],
+        capture_output=True, text=True
+    )
+    issues = []
+    for line in result.stdout.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            issue = json.loads(line)
+            if until and issue.get("closed_at", "") > until:
+                continue
+            issues.append(issue)
+        except:
+            pass
+    return issues
 
-          def fetch_issues_between(since=None, until=None):
-              """Busca issues fechadas num intervalo de datas via arquivo temp."""
-              import subprocess
-              url = f"repos/{repo}/issues?state=closed&per_page=100"
-              if since:
-                  url += f"&since={since}"
-              result = subprocess.run(
-                  ["gh", "api", url, "--paginate",
-                   "--jq", '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, closed_at: .closed_at, labels: [.labels[] | {name: .name, color: .color}]}'],
-                  capture_output=True, text=True
-              )
-              issues = []
-              for line in result.stdout.strip().splitlines():
-                  line = line.strip()
-                  if not line:
-                      continue
-                  try:
-                      issue = json.loads(line)
-                      # Filtrar pelo until se fornecido
-                      if until and issue.get("closed_at", "") > until:
-                          continue
-                      issues.append(issue)
-                  except:
-                      pass
-              return issues
+def build_section(issues):
+    categorized = {}
+    uncategorized = []
+    for issue in issues:
+        labels = issue.get("labels", [])
+        if not labels:
+            uncategorized.append(issue)
+        else:
+            label_names = [l["name"] for l in labels]
+            primary = next((l for l in label_order if l in label_names), label_names[0])
+            if primary not in categorized:
+                categorized[primary] = []
+            categorized[primary].append(issue)
 
-          def build_section(issues):
-              """Monta linhas de seções agrupadas por label."""
-              categorized = {}
-              uncategorized = []
-              for issue in issues:
-                  labels = issue.get("labels", [])
-                  if not labels:
-                      uncategorized.append(issue)
-                  else:
-                      label_names = [l["name"] for l in labels]
-                      primary = next(
-                          (l for l in label_order if l in label_names),
-                          label_names[0]
-                      )
-                      if primary not in categorized:
-                          categorized[primary] = []
-                      categorized[primary].append(issue)
+    lines = []
+    for label_name in label_order:
+        if label_name not in categorized:
+            continue
+        section_title = section_map.get(label_name, label_name)
+        lines.append(f"\n**{section_title}:**\n")
+        for issue in categorized[label_name]:
+            tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
+            lines.append(f"- {tags} {issue['title']} [\\#{issue['number']}]({issue['url']})")
 
-              lines = []
-              for label_name in label_order:
-                  if label_name not in categorized:
-                      continue
-                  section_title = section_map.get(label_name, label_name)
-                  lines.append(f"\n**{section_title}:**\n")
-                  for issue in categorized[label_name]:
-                      all_badges = " ".join(
-                          badge(l["name"], l["color"])
-                          for l in issue["labels"]
-                      )
-                      lines.append(f"- {all_badges} {issue['title']} [\\#{issue['number']}]({issue['url']})")
+    extra = [l for l in categorized if l not in label_order]
+    for label_name in extra:
+        section_title = section_map.get(label_name, label_name)
+        lines.append(f"\n**{section_title}:**\n")
+        for issue in categorized[label_name]:
+            tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
+            lines.append(f"- {tags} {issue['title']} [\\#{issue['number']}]({issue['url']})")
 
-              extra = [l for l in categorized if l not in label_order]
-              for label_name in extra:
-                  section_title = section_map.get(label_name, label_name)
-                  lines.append(f"\n**{section_title}:**\n")
-                  for issue in categorized[label_name]:
-                      all_badges = " ".join(
-                          badge(l["name"], l["color"])
-                          for l in issue["labels"]
-                      )
-                      lines.append(f"- {all_badges} {issue['title']} [\\#{issue['number']}]({issue['url']})")
+    if uncategorized:
+        lines.append(f"\n**Outros:**\n")
+        for issue in uncategorized:
+            lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
 
-              if uncategorized:
-                  lines.append(f"\n**Outros:**\n")
-                  for issue in uncategorized:
-                      lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+    return lines
 
-              return lines
+try:
+    with open("changelog.md", "r") as f:
+        existing = f.read()
+except:
+    existing = ""
 
-          # Ler changelog existente — preservar apenas blocos ## [vX.Y.Z]
-          try:
-              with open("changelog.md", "r") as f:
-                  existing = f.read()
-          except:
-              existing = ""
+history_match = re.search(r'(## \[v\d+\.\d+\.\d+\])', existing)
+history = existing[history_match.start():].strip() if history_match else ""
+history = re.sub(r'\n+\\\\?\* \*This Changelog[^\n]*', '', history).strip()
 
-          history_match = re.search(r'(## \[v\d+\.\d+\.\d+\])', existing)
-          history = existing[history_match.start():].strip() if history_match else ""
-          history = re.sub(r'\n+\\\\?\* \*This Changelog[^\n]*', '', history).strip()
-          history = re.sub(r'\n+\\\* \*This Changelog[^\n]*', '', history).strip()
+output_lines = ["# Changelog\n"]
 
-          output_lines = ["# Changelog\n"]
+if event_name == "release" and release_tag:
+    prev_tag = None
+    prev_date = None
+    for i, r in enumerate(all_releases):
+        if r["tag"] == release_tag and i > 0:
+            prev_tag = all_releases[i-1]["tag"]
+            prev_date = all_releases[i-1]["date"]
+            break
 
-          if event_name == "release" and release_tag:
-              # Disparado por release: converter "Próxima release" em bloco versionado
-              # Encontrar release anterior para saber o intervalo
-              prev_tag = None
-              prev_date = None
-              for i, r in enumerate(all_releases):
-                  if r["tag"] == release_tag and i > 0:
-                      prev_tag = all_releases[i-1]["tag"]
-                      prev_date = all_releases[i-1]["date"]
-                      break
+    release_date = release_date_raw[:10] if release_date_raw else ""
+    try:
+        release_date = datetime.strptime(release_date_raw[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except:
+        pass
 
-              release_date = release_date_raw[:10] if release_date_raw else ""
-              try:
-                  release_date = datetime.strptime(release_date_raw[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
-              except:
-                  pass
+    issues = fetch_issues(since=prev_date, until=release_date_raw)
+    display_name = release_name if release_name else release_tag
+    compare = f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}" if prev_tag else f"https://github.com/{repo}/releases/tag/{release_tag}"
 
-              # Issues desta release: fechadas desde a release anterior até esta
-              issues = fetch_issues_between(since=prev_date, until=release_date_raw)
+    output_lines.append(f"## [{display_name}](https://github.com/{repo}/releases/tag/{release_tag}) ({release_date})\n")
+    section_lines = build_section(issues)
+    output_lines.extend(section_lines)
+    output_lines.append(f"\n[Changelog detalhado]({compare})\n")
 
-              display_name = release_name if release_name else release_tag
-              compare = f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}" if prev_tag else f"https://github.com/{repo}/releases/tag/{release_tag}"
+else:
+    last_tag = all_releases[-1]["tag"] if all_releases else ""
+    last_date = all_releases[-1]["date"] if all_releases else None
+    issues = fetch_issues(since=last_date)
 
-              output_lines.append(f"## [{display_name}](https://github.com/{repo}/releases/tag/{release_tag}) ({release_date})\n")
-              output_lines.append(f"[Changelog detalhado]({compare})\n")
-              output_lines.extend(build_section(issues))
+    output_lines.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
+    section_lines = build_section(issues)
+    output_lines.extend(section_lines)
+    if last_tag:
+        output_lines.append(f"\n[Changelog detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
 
-          else:
-              # Disparado por issue: montar bloco "Próxima release"
-              # Issues desde a última release
-              last_tag = all_releases[-1]["tag"] if all_releases else ""
-              last_date = all_releases[-1]["date"] if all_releases else None
+final = "\n".join(output_lines)
+final += ("\n\n" + history if history else "") + "\n"
 
-              issues = fetch_issues_between(since=last_date)
+with open("changelog.md", "w") as f:
+    f.write(final)
 
-              output_lines.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
-              if last_tag:
-                  output_lines.append(f"[Changelog detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
-              output_lines.extend(build_section(issues))
-
-          final = "\n".join(output_lines)
-          final += ("\n\n" + history if history else "") + "\n"
-
-          with open("changelog.md", "w") as f:
-              f.write(final)
-
-          print("changelog.md gerado com sucesso.")
-          PYEOF
+print("changelog.md gerado com sucesso.")
+PYEOF
 
       - name: Commit and push
         env:
