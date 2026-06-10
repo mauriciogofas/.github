@@ -16,6 +16,10 @@ on:
         required: false
         type: string
         default: ''
+      section_map:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   generate_changelog:
@@ -34,14 +38,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           LABEL_MAP: ${{ inputs.label_map }}
+          SECTION_MAP: ${{ inputs.section_map }}
         run: |
           REPO="${{ github.repository }}"
 
-          # Última release
           LAST_RELEASE=$(gh api repos/$REPO/releases/latest --jq '.published_at' 2>/dev/null || echo "")
           LAST_TAG=$(gh api repos/$REPO/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
 
-          # Issues fechadas desde a última release
           if [ -n "$LAST_RELEASE" ]; then
             SINCE="&since=$LAST_RELEASE"
           else
@@ -51,22 +54,21 @@ jobs:
           ISSUES=$(gh api "repos/$REPO/issues?state=closed&per_page=100$SINCE" \
             --jq '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, labels: [.labels[] | {name: .name, color: .color}]}')
 
-          # Labels do repo com cores
           REPO_LABELS=$(gh api repos/$REPO/labels --paginate \
             --jq '[.[] | {name: .name, color: .color}] | tostring')
 
           python3 << PYEOF
           import json, os, sys, re
-          from datetime import datetime
           from urllib.parse import quote
 
           issues_raw = """$ISSUES"""
           repo_labels_raw = """$REPO_LABELS"""
           label_map_raw = os.environ.get("LABEL_MAP", "")
+          section_map_raw = os.environ.get("SECTION_MAP", "")
           last_tag = "$LAST_TAG"
           repo = "$REPO"
 
-          # Label map customizado
+          # label_map: renomeia o badge (ex: {"bug": "Bug"})
           label_map = {}
           if label_map_raw.strip():
               try:
@@ -74,7 +76,27 @@ jobs:
               except:
                   pass
 
-          # Labels do repo: {name: color}
+          # section_map: renomeia o título da seção (ex: {"bug": "Fix"})
+          # padrão embutido
+          default_section_map = {
+              "bug": "Fix",
+              "enhancement": "Melhorias",
+              "documentation": "Documentação",
+              "duplicate": "Duplicados",
+              "good first issue": "Boas entradas",
+              "help wanted": "Precisa de ajuda",
+              "invalid": "Inválidos",
+              "question": "Dúvidas",
+              "wontfix": "Não será corrigido",
+          }
+          section_map = dict(default_section_map)
+          if section_map_raw.strip():
+              try:
+                  section_map.update(json.loads(section_map_raw))
+              except:
+                  pass
+
+          # Labels do repo: [{name, color}]
           repo_labels = {}
           try:
               for l in json.loads(repo_labels_raw):
@@ -82,11 +104,14 @@ jobs:
           except:
               pass
 
-          # Badge shields.io para uma label
           def badge(name, color):
               display = label_map.get(name, name)
-              safe_name = quote(display.replace("-", "--").replace("_", "__").replace(" ", "_"))
-              return f"![{display}](https://img.shields.io/badge/{safe_name}-{color}?style=flat-square)"
+              safe = quote(display.replace("-", "--").replace("_", "__").replace(" ", "_"))
+              # Garantir que cor hex seja válida (6 chars)
+              hex_color = color.lstrip("#").upper()
+              if len(hex_color) not in (3, 6):
+                  hex_color = "555555"
+              return f"![{display}](https://img.shields.io/badge/{safe}-{hex_color}?style=flat-square&labelColor={hex_color}&color={hex_color})"
 
           # Parsear issues
           issues = []
@@ -103,11 +128,9 @@ jobs:
               print("Nenhuma issue para processar.")
               sys.exit(0)
 
-          # Agrupar por primeira label — cada issue aparece só uma vez
-          # Badge de todas as labels aparece ao lado
-          categorized = {}   # label_name -> [issues]
+          # Agrupar pela primeira label — cada issue aparece só uma vez
+          categorized = {}
           uncategorized = []
-          placed = set()
 
           for issue in issues:
               labels = issue.get("labels", [])
@@ -119,29 +142,28 @@ jobs:
                       categorized[first] = []
                   categorized[first].append(issue)
 
-          # Ler changelog.md existente — preservar apenas blocos de release (## [vX.Y.Z])
+          # Preservar apenas blocos de release versionados (## [vX.Y.Z])
           try:
               with open("changelog.md", "r") as f:
                   existing = f.read()
           except:
               existing = ""
 
-          # Remover tudo antes do primeiro bloco de release versionado
-          history_match = re.search(r'(## \[v\d)', existing)
+          history_match = re.search(r'(## \[v\d+\.\d+\.\d+\])', existing)
           history = existing[history_match.start():].strip() if history_match else ""
+          # Remover rodapé do charmixer se presente
+          history = re.sub(r'\n\\\* \*This Changelog.*', '', history).strip()
 
-          # Montar novo bloco Unreleased
-          today = datetime.now().strftime("%d/%m/%Y")
+          # Montar novo bloco
           lines = ["# Changelog\n"]
-          lines.append(f"## [Unreleased](https://github.com/{repo}/tree/HEAD) — {today}\n")
+          lines.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
           if last_tag:
-              lines.append(f"[Full Changelog](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
+              lines.append(f"[Changelog Detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
 
-          # Ordem: labels na ordem em que aparecem no repo
           for label_name, label_color in repo_labels.items():
               if label_name not in categorized:
                   continue
-              section_title = label_map.get(label_name, label_name)
+              section_title = section_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
               for issue in categorized[label_name]:
                   all_badges = " ".join(
@@ -150,10 +172,9 @@ jobs:
                   )
                   lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']}) {all_badges}")
 
-          # Labels fora do repo (edge case)
           extra = [l for l in categorized if l not in repo_labels]
           for label_name in extra:
-              section_title = label_map.get(label_name, label_name)
+              section_title = section_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
               for issue in categorized[label_name]:
                   all_badges = " ".join(
@@ -162,7 +183,6 @@ jobs:
                   )
                   lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']}) {all_badges}")
 
-          # Sem label
           if uncategorized:
               lines.append(f"\n**Outros:**\n")
               for issue in uncategorized:
