@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased](https://github.com/mauriciogofas/.github/tree/HEAD)
+## [v1.0.0](https://github.com/mauriciogofas/.github/tree/v1.0.0) (10/06/2026)
 
-[Full Changelog](https://github.com/mauriciogofas/.github/compare/6e791e01aff99113bf47e24456ff269dec90a5ab...HEAD)
+[Full Changelog](https://github.com/mauriciogofas/.github/compare/6e791e01aff99113bf47e24456ff269dec90a5ab...v1.0.0)
 
 **Closed issues:**
 
