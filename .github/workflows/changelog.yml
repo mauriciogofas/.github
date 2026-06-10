@@ -28,7 +28,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: master
-          token: ${{ secrets.PROJECT_TOKEN }}
 
       - name: Write changelog script
         run: |
