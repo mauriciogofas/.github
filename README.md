@@ -11,7 +11,7 @@ Dois workflows reutilizáveis para qualquer conta ou organização GitHub:
 
 ### Changelog
 
-A cada release publicada ou issue fechada/editada, o workflow chama [`charmixer/auto-changelog-action@v1.2`](https://github.com/charmixer/auto-changelog-action), gera o `changelog.md` a partir do histórico de releases e issues do repositório, e commita diretamente na branch `master`.
+A cada release publicada ou issue fechada/editada, o workflow chama [`charmixer/auto-changelog-action@v1.2`](https://github.com/charmixer/auto-changelog-action), gera o `changelog.md` a partir do histórico de releases e issues do repositório e commita diretamente na branch `master`.
 
 ### Project Sync
 
@@ -182,7 +182,7 @@ O nome do arquivo de saída gerado pela action é sempre `changelog.md` (minúsc
 
 **Ordem correta ao publicar uma release**
 
-Feche todos os issues relevantes primeiro, aguarde o workflow de changelog concluir, e só então crie a release. Se criar a release antes de fechar os issues, eles aparecerão em uma seção "Unreleased" no changelog. Para corrigir: reabra e feche novamente o issue para retriggar o workflow.
+Feche todos os issues relevantes primeiro, aguarde o workflow de changelog concluir e só então crie a release. Se criar a release antes de fechar os issues, eles aparecerão em uma seção "Unreleased" no changelog. Para corrigir: reabra e feche novamente o issue para retriggar o workflow.
 
 ---
 
