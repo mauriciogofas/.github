@@ -223,4 +223,6 @@ jobs:
           git add changelog.md
           git diff --staged --quiet && echo "No changes to changelog.md" && exit 0
           git commit -m 'ci: update changelog.md'
+          # Pull antes do push para evitar conflito em runs concorrentes
+          git pull --rebase "https://${GIT_USER}:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" master || true
           git push "https://${GIT_USER}:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:master
