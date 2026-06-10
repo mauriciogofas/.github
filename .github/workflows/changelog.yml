@@ -37,12 +37,19 @@ jobs:
           from urllib.parse import quote
           from datetime import datetime
 
-          repo        = os.environ["REPO"]
-          event_name  = os.environ.get("EVENT_NAME", "")
-          release_tag = os.environ.get("RELEASE_TAG", "")
-          release_name= os.environ.get("RELEASE_NAME", "")
+          repo         = os.environ["REPO"]
+          event_name   = os.environ.get("EVENT_NAME", "")
+          release_tag  = os.environ.get("RELEASE_TAG", "")
+          release_name = os.environ.get("RELEASE_NAME", "")
           release_date_raw = os.environ.get("RELEASE_DATE", "")
           section_map_raw  = os.environ.get("SECTION_MAP", "")
+
+          # Palavras que remetem a bug — label cai em Correções
+          BUG_KEYWORDS = {"bug", "erro", "error", "fix", "hotfix"}
+
+          def is_bug_label(name):
+              n = name.lower()
+              return any(kw in n for kw in BUG_KEYWORDS)
 
           def gh_json(url):
               r = subprocess.run(["gh", "api", url, "--paginate"], capture_output=True, text=True)
@@ -60,30 +67,18 @@ jobs:
           repo_labels_data = gh_json(f"repos/{repo}/labels")
           repo_labels = {l["name"]: l["color"] for l in repo_labels_data}
 
-          default_section_map = {
-              "enhancement": "Melhorias",
-              "melhoria":    "Melhorias",
-              "bug":         "Correções",
-              "documentation": "Documentação",
-              "docs":        "Documentação",
-              "duplicate":   "Duplicados",
-              "duplicado":   "Duplicados",
-              "good first issue": "Boas entradas",
-              "help wanted": "Precisa de ajuda",
-              "invalid":     "Inválidos",
-              "question":    "Dúvidas",
-              "wontfix":     "Não será corrigido",
-          }
-          section_map = dict(default_section_map)
+          # section_map customizado via caller
+          extra_section_map = {}
           if section_map_raw.strip():
               try:
-                  section_map.update(json.loads(section_map_raw))
+                  extra_section_map = json.loads(section_map_raw)
               except:
                   pass
 
-          ordered_labels = list(default_section_map.keys())
-          extra_labels   = [l for l in repo_labels if l not in ordered_labels]
-          label_order    = ordered_labels + extra_labels
+          def section_for(label_name):
+              if label_name in extra_section_map:
+                  return extra_section_map[label_name]
+              return "Correções" if is_bug_label(label_name) else "Melhorias"
 
           def fetch_issues(since=None, until=None):
               url = f"repos/{repo}/issues?state=closed&per_page=100"
@@ -101,7 +96,7 @@ jobs:
                       continue
                   try:
                       issue = json.loads(line)
-                      if until and issue.get("closed_at","") > until:
+                      if until and issue.get("closed_at", "") > until:
                           continue
                       issues.append(issue)
                   except:
@@ -109,45 +104,31 @@ jobs:
               return issues
 
           def label_tag(name):
-              return f"`{name}`"
+              filter_url = f"https://github.com/{repo}/issues?q=is%3Aissue+state%3Aclosed+label%3A{quote(name)}"
+              return f"[`{name}`]({filter_url})"
 
           def build_section(issues):
-              categorized  = {}
-              uncategorized = []
+              melhorias  = []
+              correcoes  = []
               for issue in issues:
                   labels = issue.get("labels", [])
-                  if not labels:
-                      uncategorized.append(issue)
+                  names  = [l["name"] for l in labels]
+                  # Classificar pelo primeiro nome que remeta a bug; se nenhum, vai para Melhorias
+                  is_bug = any(is_bug_label(n) for n in names)
+                  if is_bug:
+                      correcoes.append(issue)
                   else:
-                      names   = [l["name"] for l in labels]
-                      primary = next((l for l in label_order if l in names), names[0])
-                      categorized.setdefault(primary, []).append(issue)
+                      melhorias.append(issue)
 
               lines = []
-              for lname in label_order:
-                  if lname not in categorized:
+              for section_title, group in [("Melhorias", melhorias), ("Correções", correcoes)]:
+                  if not group:
                       continue
-                  title = section_map.get(lname, lname)
-                  lines.append(f"\n**{title}:**\n")
-                  for issue in categorized[lname]:
-                      tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
+                  lines.append(f"\n**{section_title}:**\n")
+                  for issue in group:
                       num  = issue["number"]
-                      lines.append(f"- {tags} {issue['title']} [\\#{num}]({issue['url']})")
-
-              extra = [l for l in categorized if l not in label_order]
-              for lname in extra:
-                  title = section_map.get(lname, lname)
-                  lines.append(f"\n**{title}:**\n")
-                  for issue in categorized[lname]:
                       tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
-                      num  = issue["number"]
-                      lines.append(f"- {tags} {issue['title']} [\\#{num}]({issue['url']})")
-
-              if uncategorized:
-                  lines.append(f"\n**Outros:**\n")
-                  for issue in uncategorized:
-                      num = issue["number"]
-                      lines.append(f"- {issue['title']} [\\#{num}]({issue['url']})")
+                      lines.append(f"- {issue['title']} [\\#{num}]({issue['url']}) {tags}")
               return lines
 
           # Preservar histórico de releases versionadas
@@ -177,10 +158,10 @@ jobs:
               except:
                   pass
 
-              issues   = fetch_issues(since=prev_date, until=release_date_raw)
-              dname    = release_name if release_name else release_tag
-              compare  = (f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}"
-                          if prev_tag else f"https://github.com/{repo}/releases/tag/{release_tag}")
+              issues  = fetch_issues(since=prev_date, until=release_date_raw)
+              dname   = release_name if release_name else release_tag
+              compare = (f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}"
+                         if prev_tag else f"https://github.com/{repo}/releases/tag/{release_tag}")
 
               out.append(f"## [{dname}](https://github.com/{repo}/releases/tag/{release_tag}) ({rd})\n")
               out.extend(build_section(issues))
