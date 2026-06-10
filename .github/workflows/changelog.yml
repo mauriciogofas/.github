@@ -172,7 +172,7 @@ jobs:
               last_date = all_releases[-1]["date"] if all_releases else None
               issues    = fetch_issues(since=last_date)
 
-              out.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
+              out.append(f"## [Próxima ](https://github.com/{repo}/tree/HEAD)atualização\n")
               out.extend(build_section(issues))
               if last_tag:
                   out.append(f"\n[Changelog detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
