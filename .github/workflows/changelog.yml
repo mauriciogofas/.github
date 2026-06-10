@@ -101,13 +101,19 @@ jobs:
 
           def label_tag(name):
               filter_url = f"https://github.com/{repo}/issues?q=is%3Aissue+state%3Aclosed+label%3A{quote(name)}"
-              return f"[`{name}`]({filter_url})"
+              return f'<a href="{filter_url}" style="color:#a99c9c;text-decoration:none"><code>{name}</code></a>'  
 
           # Labels padrão que classificam o issue como Melhorias ou Correções
           DEFAULT_LABELS = {"melhoria", "melhorias", "enhancement", "bug", "erro", "error", "fix", "hotfix"}
 
           def has_default_label(names):
               return any(n.lower() in DEFAULT_LABELS for n in names)
+
+          def fmt_issue(issue):
+              num  = issue["number"]
+              tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
+              suffix = f" {tags}" if tags else ""
+              return f"- {issue['title']} | [#{num}]({issue['url']}){suffix}"
 
           def build_section(issues):
               if not issues:
@@ -145,29 +151,20 @@ jobs:
                       continue
                   lines.append(f"\n**{title}:**\n")
                   for issue in group:
-                      num  = issue["number"]
-                      tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
-                      suffix = f" {tags}" if tags else ""
-                      lines.append(f"- {issue['title']} [\\#{num}]({issue['url']}){suffix}")
+                      lines.append(fmt_issue(issue))
 
               # Seções extras por label (2+ issues)
               for label_name, group in grouped_extras.items():
                   title = label_name.capitalize()
                   lines.append(f"\n**{title}:**\n")
                   for issue in group:
-                      num  = issue["number"]
-                      tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
-                      suffix = f" {tags}" if tags else ""
-                      lines.append(f"- {issue['title']} [\\#{num}]({issue['url']}){suffix}")
+                      lines.append(fmt_issue(issue))
 
               # Seção "Vale mencionar" para avulsos
               if singles:
                   lines.append(f"\n**Vale mencionar:**\n")
                   for issue in singles:
-                      num  = issue["number"]
-                      tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
-                      suffix = f" {tags}" if tags else ""
-                      lines.append(f"- {issue['title']} [\\#{num}]({issue['url']}){suffix}")
+                      lines.append(fmt_issue(issue))
 
               return lines
 
@@ -184,7 +181,7 @@ jobs:
               out.append(f"## [Próxima atualização](https://github.com/{repo}/tree/HEAD)\n")
               out.extend(unreleased_lines)
               if last_tag:
-                  out.append(f"\n[O que mudou no código](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
+                  out.append(f"\n[Comparar versões](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
 
           # Blocos de releases — do mais recente para o mais antigo
           for i in range(len(all_releases) - 1, -1, -1):
@@ -201,7 +198,7 @@ jobs:
               out.append(f"## [{rel['name']} - {rd}]({rel['url']})\n")
               section_lines = build_section(issues)
               out.extend(section_lines)
-              out.append(f"\n[O que mudou no código]({compare})\n")
+              out.append(f"\n[Comparar versões]({compare})\n")
 
           final = "\n".join(out) + "\n"
 
