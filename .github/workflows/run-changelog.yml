@@ -1,0 +1,16 @@
+name: Changelog
+on:
+  release:
+    types: [published]
+  issues:
+    types: [closed, edited]
+jobs:
+  changelog:
+    permissions:
+      contents: write
+    uses: mauriciogofas/.github/.github/workflows/changelog.yml@master
+    with:
+      git_user: "mauriciogofas"
+      git_name: "mauriciogofas"
+      git_email: "mauricio@gofas.net"
+    secrets: inherit
