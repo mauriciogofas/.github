@@ -68,7 +68,7 @@ jobs:
           last_tag = "$LAST_TAG"
           repo = "$REPO"
 
-          # label_map: renomeia o badge (ex: {"bug": "Bug"})
+          # label_map: renomeia o badge
           label_map = {}
           if label_map_raw.strip():
               try:
@@ -76,11 +76,10 @@ jobs:
               except:
                   pass
 
-          # section_map: renomeia o título da seção (ex: {"bug": "Fix"})
-          # padrão embutido
+          # section_map: título da seção — "enhancement" vem antes de "bug"
           default_section_map = {
-              "bug": "Fix",
               "enhancement": "Melhorias",
+              "bug": "Correções",
               "documentation": "Documentação",
               "duplicate": "Duplicados",
               "good first issue": "Boas entradas",
@@ -96,7 +95,7 @@ jobs:
               except:
                   pass
 
-          # Labels do repo: [{name, color}]
+          # Labels do repo preservando ordem de inserção
           repo_labels = {}
           try:
               for l in json.loads(repo_labels_raw):
@@ -107,11 +106,11 @@ jobs:
           def badge(name, color):
               display = label_map.get(name, name)
               safe = quote(display.replace("-", "--").replace("_", "__").replace(" ", "_"))
-              # Garantir que cor hex seja válida (6 chars)
               hex_color = color.lstrip("#").upper()
               if len(hex_color) not in (3, 6):
                   hex_color = "555555"
-              return f"![{display}](https://img.shields.io/badge/{safe}-{hex_color}?style=flat-square&labelColor={hex_color}&color={hex_color})"
+              filter_url = f"https://github.com/{repo}/issues?q=is%3Aissue%20state%3Aclosed%20label%3A{quote(name)}"
+              return f"[![{display}](https://img.shields.io/badge/{safe}-{hex_color}?style=flat-square&labelColor={hex_color}&color={hex_color})]({filter_url})"
 
           # Parsear issues
           issues = []
@@ -142,7 +141,7 @@ jobs:
                       categorized[first] = []
                   categorized[first].append(issue)
 
-          # Preservar apenas blocos de release versionados (## [vX.Y.Z])
+          # Preservar apenas blocos de release versionados — remover tudo que não corresponde ao padrão
           try:
               with open("changelog.md", "r") as f:
                   existing = f.read()
@@ -151,18 +150,25 @@ jobs:
 
           history_match = re.search(r'(## \[v\d+\.\d+\.\d+\])', existing)
           history = existing[history_match.start():].strip() if history_match else ""
-          # Remover rodapé do charmixer se presente
+          # Remover rodapé do charmixer em qualquer variação
           history = re.sub(r'\n+\\\\?\* \*This Changelog[^\n]*', '', history).strip()
+          history = re.sub(r'\n+\\\* \*This Changelog[^\n]*', '', history).strip()
+
+          # Reordenar seções: usar ordem do section_map (enhancement antes de bug)
+          ordered_labels = list(default_section_map.keys())
+          extra_labels = [l for l in repo_labels if l not in ordered_labels]
+          label_order = ordered_labels + extra_labels
 
           # Montar novo bloco
           lines = ["# Changelog\n"]
           lines.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
           if last_tag:
-              lines.append(f"[Changelog Detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
+              lines.append(f"[Changelog detalhado](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
 
-          for label_name, label_color in repo_labels.items():
+          for label_name in label_order:
               if label_name not in categorized:
                   continue
+              label_color = repo_labels.get(label_name, "555555")
               section_title = section_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
               for issue in categorized[label_name]:
@@ -172,7 +178,8 @@ jobs:
                   )
                   lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']}) {all_badges}")
 
-          extra = [l for l in categorized if l not in repo_labels]
+          # Labels fora do section_map
+          extra = [l for l in categorized if l not in label_order]
           for label_name in extra:
               section_title = section_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
@@ -195,7 +202,7 @@ jobs:
               f.write(final)
 
           print("changelog.md gerado com sucesso.")
-          PYEOF
+
 
       - name: Commit and push
         env:
