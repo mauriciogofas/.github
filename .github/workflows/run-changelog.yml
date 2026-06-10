@@ -1,0 +1,12 @@
+name: Auto generate changelog
+
+on:
+  release:
+    types: [published]
+  issues:
+    types: [closed, edited]
+
+jobs:
+  changelog:
+    uses: mauriciogofas/.github/.github/workflows/changelog.yml@master
+    secrets: inherit
