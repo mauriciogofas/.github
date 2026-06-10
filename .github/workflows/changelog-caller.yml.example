@@ -8,6 +8,9 @@ jobs:
   changelog:
     permissions:
       contents: write
+    # Repos da conta mauriciogofas: usar mauriciogofas/.github
+    # Repos de outra conta/org: fazer fork deste repo e apontar para o fork
+    # (secrets: inherit não propaga cross-account/cross-org)
     uses: SEU_USUARIO/.github/.github/workflows/changelog.yml@master
     with:
       git_user: "seu-usuario-github"
