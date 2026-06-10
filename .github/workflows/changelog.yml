@@ -30,28 +30,144 @@ jobs:
           ref: master
           token: ${{ secrets.PROJECT_TOKEN }}
 
-      - name: Build label_map from repo labels
-        id: labels
+      - name: Generate changelog from issues
         env:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          LABEL_MAP: ${{ inputs.label_map }}
         run: |
-          if [ -n "${{ inputs.label_map }}" ]; then
-            echo "label_map=${{ inputs.label_map }}" >> $GITHUB_OUTPUT
+          REPO="${{ github.repository }}"
+
+          # Obter data da última release
+          LAST_RELEASE=$(gh api repos/$REPO/releases/latest --jq '.published_at' 2>/dev/null || echo "")
+
+          # Buscar issues fechadas desde a última release (ou todas se não houver release)
+          if [ -n "$LAST_RELEASE" ]; then
+            SINCE="&since=$LAST_RELEASE"
+            LAST_TAG=$(gh api repos/$REPO/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
           else
-            MAP=$(gh api repos/${{ github.repository }}/labels --paginate \
-              --jq '[.[] | {(.name): .name}] | add | tostring')
-            echo "label_map=$MAP" >> $GITHUB_OUTPUT
+            SINCE=""
+            LAST_TAG=""
           fi
 
-      - name: Auto generate changelog
-        env:
-          GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-        uses: charmixer/auto-changelog-action@v1.2
-        with:
-          token: ${{ secrets.PROJECT_TOKEN }}
-          output: changelog.md
-          date_format: '%d/%m/%Y'
-          label_map: ${{ steps.labels.outputs.label_map }}
+          # Buscar todas as issues fechadas
+          ISSUES=$(gh api "repos/$REPO/issues?state=closed&per_page=100$SINCE" \
+            --jq '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, labels: [.labels[].name]}')
+
+          if [ -z "$ISSUES" ]; then
+            echo "Nenhuma issue encontrada."
+            exit 0
+          fi
+
+          # Buscar todas as labels do repo
+          REPO_LABELS=$(gh api repos/$REPO/labels --paginate --jq '.[].name')
+
+          # Gerar changelog.md com python
+          python3 << PYEOF
+          import json, os, sys
+          from datetime import datetime
+
+          issues_raw = """$ISSUES"""
+          repo_labels_raw = """$REPO_LABELS"""
+          label_map_raw = os.environ.get("LABEL_MAP", "")
+          last_tag = "$LAST_TAG"
+          repo = "$REPO"
+
+          # Parsear label_map customizado se fornecido
+          label_map = {}
+          if label_map_raw.strip():
+              try:
+                  label_map = json.loads(label_map_raw)
+              except:
+                  pass
+
+          # Coletar labels do repo como categorias
+          repo_labels = [l.strip() for l in repo_labels_raw.strip().splitlines() if l.strip()]
+
+          # Parsear issues (cada linha é um JSON)
+          issues = []
+          for line in issues_raw.strip().splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              try:
+                  issues.append(json.loads(line))
+              except:
+                  pass
+
+          if not issues:
+              print("Nenhuma issue para processar.")
+              sys.exit(0)
+
+          # Agrupar issues por label
+          categorized = {}   # label -> [issues]
+          uncategorized = [] # issues sem label
+
+          for issue in issues:
+              labels = issue.get("labels", [])
+              if not labels:
+                  uncategorized.append(issue)
+              else:
+                  for label in labels:
+                      if label not in categorized:
+                          categorized[label] = []
+                      categorized[label].append(issue)
+
+          # Ler changelog.md existente para preservar histórico
+          try:
+              with open("changelog.md", "r") as f:
+                  existing = f.read()
+          except:
+              existing = ""
+
+          # Remover bloco Unreleased anterior se existir
+          import re
+          existing = re.sub(r'## \[Unreleased\].*?(?=## \[|\Z)', '', existing, flags=re.DOTALL).strip()
+
+          # Montar novo bloco Unreleased
+          today = datetime.now().strftime("%d/%m/%Y")
+          lines = []
+          lines.append("# Changelog\n")
+          lines.append(f"## [Unreleased](https://github.com/{repo}/tree/HEAD) — {today}\n")
+
+          if last_tag:
+              lines.append(f"[Full Changelog](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
+
+          # Seções por label
+          for label in repo_labels:
+              if label not in categorized:
+                  continue
+              section_title = label_map.get(label, label)
+              lines.append(f"\n**{section_title}:**\n")
+              for issue in categorized[label]:
+                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+
+          # Issues com labels que não estão nas labels do repo (edge case)
+          extra_labels = [l for l in categorized if l not in repo_labels]
+          for label in extra_labels:
+              section_title = label_map.get(label, label)
+              lines.append(f"\n**{section_title}:**\n")
+              for issue in categorized[label]:
+                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+
+          # Sem label
+          if uncategorized:
+              lines.append(f"\n**Outros:**\n")
+              for issue in uncategorized:
+                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+
+          new_block = "\n".join(lines)
+
+          # Juntar com histórico existente
+          if existing:
+              final = new_block + "\n\n" + existing
+          else:
+              final = new_block
+
+          with open("changelog.md", "w") as f:
+              f.write(final + "\n")
+
+          print("changelog.md gerado com sucesso.")
+          PYEOF
 
       - name: Commit and push
         env:
