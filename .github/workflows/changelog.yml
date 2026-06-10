@@ -30,6 +30,19 @@ jobs:
           ref: master
           token: ${{ secrets.PROJECT_TOKEN }}
 
+      - name: Build label_map from repo labels
+        id: labels
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.label_map }}" ]; then
+            echo "label_map=${{ inputs.label_map }}" >> $GITHUB_OUTPUT
+          else
+            MAP=$(gh api repos/${{ github.repository }}/labels --paginate \
+              --jq '[.[] | {(.name): .name}] | add | tostring')
+            echo "label_map=$MAP" >> $GITHUB_OUTPUT
+          fi
+
       - name: Auto generate changelog
         env:
           GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
@@ -38,7 +51,7 @@ jobs:
           token: ${{ secrets.PROJECT_TOKEN }}
           output: changelog.md
           date_format: '%d/%m/%Y'
-          label_map: ${{ inputs.label_map }}
+          label_map: ${{ steps.labels.outputs.label_map }}
 
       - name: Commit and push
         env:
