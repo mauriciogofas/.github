@@ -2,6 +2,16 @@ name: Auto generate changelog
 
 on:
   workflow_call:
+    inputs:
+      git_user:
+        required: true
+        type: string
+      git_name:
+        required: true
+        type: string
+      git_email:
+        required: true
+        type: string
 
 jobs:
   generate_changelog:
@@ -28,10 +38,13 @@ jobs:
       - name: Commit and push
         env:
           PUSH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GIT_USER: ${{ inputs.git_user }}
+          GIT_NAME: ${{ inputs.git_name }}
+          GIT_EMAIL: ${{ inputs.git_email }}
         run: |
-          git config user.email "mauricio@gofas.net"
-          git config user.name "mauriciogofas"
+          git config user.email "$GIT_EMAIL"
+          git config user.name "$GIT_NAME"
           git add changelog.md
           git diff --staged --quiet && echo "No changes to changelog.md" && exit 0
           git commit -m 'ci: update changelog.md'
-          git push "https://mauriciogofas:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:master
+          git push "https://${GIT_USER}:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:master
