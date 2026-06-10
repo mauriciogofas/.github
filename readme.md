@@ -1,59 +1,94 @@
-# Reusable Workflows — Auto Changelog & GitHub Projects Sync
+# mauriciogofas/.github — Workflows Globais
 
-Dois workflows reutilizáveis para qualquer conta ou organização GitHub:
+Repositório central de workflows reutilizáveis para todos os repositórios da conta [`mauriciogofas`](https://github.com/mauriciogofas).
 
-1. **`changelog.yml`** — gera e commita `changelog.md` automaticamente a cada release ou issue fechada
-2. **`project-sync.yml`** — adiciona issues a um GitHub Project V2 e move entre colunas conforme o status
+Dois workflows estão disponíveis:
 
-Todos os dados específicos do usuário (credenciais, IDs de projeto, usuário Git) ficam nos arquivos **caller** dentro do seu próprio repositório. Os workflows deste repo não armazenam, registram nem recebem nenhum dado seu além do que o próprio GitHub expõe ao runner durante a execução — o mesmo acesso que qualquer GitHub Action pública já tem.
-
-> **Nota técnica sobre privacidade:** por comportamento padrão do GitHub Actions, o `github context` dentro de um workflow reutilizável é sempre associado ao workflow caller. Isso significa que o runner que executa o `project-sync.yml` e o `changelog.yml` deste repo tem acesso ao contexto do seu repositório (como `github.repository`) durante a execução. Esse é o comportamento padrão documentado do GitHub para todos os workflows reutilizáveis — não é exclusivo deste projeto. Nenhum dado é coletado, armazenado ou transmitido além da execução normal do runner.
+1. **`changelog.yml`** — gera e commita `changelog.md` automaticamente a cada release publicada ou issue fechada
+2. **`project-sync.yml`** — adiciona issues ao GitHub Projects V2 e move entre colunas conforme o status
 
 ---
 
 ## Como funciona
 
-### Changelog
+### `changelog.yml`
 
-A cada release publicada ou issue fechada/editada, o workflow chama [`charmixer/auto-changelog-action@v1.2`](https://github.com/charmixer/auto-changelog-action), gera `changelog.md` a partir do histórico de releases e issues do repositório e commita diretamente na branch `master`.
+A cada release publicada ou issue fechada/editada, o workflow reconstrói o `changelog.md` **completo do zero** a partir de todos os dados do repositório — sem depender do conteúdo anterior do arquivo. Isso significa que apagar o `changelog.md` e fechar qualquer issue o regenera integralmente com todo o histórico.
 
-### Project Sync
+**Estrutura gerada:**
+
+```
+# Changelog
+
+## [Próxima atualização](url)
+
+**Melhorias:**
+- Título do issue | #N `label`
+
+**Correções:**
+- Título do issue | #N `label`
+
+**Docs:**              ← seção extra quando 2+ issues têm a mesma label não-padrão
+- ...
+
+**Vale mencionar:**    ← issues com labels avulsas (sem grupo suficiente)
+- ...
+
+[Comparar versões](url)
+
+## [v2.0.0 - 10/06/2026](url)
+...
+```
+
+**Classificação automática:**
+
+| Seção | Critério |
+|---|---|
+| **Correções** | Label contém: `bug`, `erro`, `error`, `fix`, `hotfix` |
+| **Melhorias** | Label padrão de melhoria ou nenhuma label |
+| **Seção própria** | 2+ issues com a mesma label não-padrão |
+| **Vale mencionar** | Issues com label não-padrão sem grupo suficiente |
+
+- Issues com múltiplas labels são classificados pela label de maior prioridade (Correções > Melhorias > demais)
+- Labels são exibidas à direita do issue com cor `#a99c9c`, sem sublinhado e com link para filtro no GitHub
+- Nomes de seções extras são capitalizados automaticamente (`docs` → `Docs:`)
+- O bloco "Próxima atualização" lista issues fechados após a última release
+- Cada bloco de release lista apenas os issues fechados no intervalo entre ela e a release anterior
+
+**Quando uma release é criada:**
+
+O bloco "Próxima atualização" é automaticamente convertido em `## [v2.0.0 - 10/06/2026]` com link para a release e "Comparar versões" apontando para o diff com a versão anterior.
+
+---
+
+### `project-sync.yml`
 
 A cada issue aberta, reaberta ou fechada, o workflow:
 
 1. Resolve o `node_id` da issue via GraphQL
-2. Adiciona a issue ao seu projeto via `addProjectV2ItemById`
+2. Adiciona ao projeto via `addProjectV2ItemById`
 3. Atualiza o campo **Status** conforme a ação:
-   - `opened` → coluna **Realizar**
-   - `reopened` → coluna **Em andamento**
-   - `closed` → coluna **Realizado**
+   - `opened` → **Realizar**
+   - `reopened` → **Em andamento**
+   - `closed` → **Realizado**
 4. Move o item para o topo do board via `updateProjectV2ItemPosition`
 
 ---
 
-## Passo a passo para configurar
+## Configuração
 
 ### Passo 1 — Criar o projeto no GitHub
 
-Acesse **github.com > Projects > New project > Board**.
-
-Crie três colunas com os nomes que preferir. A correspondência entre nome e coluna é configurada por você no caller — não há nomes obrigatórios. Sugestão:
+Acesse **Projects > New project > Board** e crie três colunas:
 
 - **Realizar** — issues a fazer
 - **Em andamento** — issues em progresso
 - **Realizado** — issues concluídas
 
-As issues se moverão entre essas colunas automaticamente conforme forem abertas, reabertas ou fechadas.
-
----
-
 ### Passo 2 — Obter os IDs do projeto e das colunas
 
-Você vai precisar de três valores: o ID do projeto, o ID do campo Status e os IDs de cada opção (coluna). Tudo obtido via GraphQL com o GitHub CLI.
-
-**Primeiro, liste seus projetos para obter o ID do projeto (`PVT_...`):**
-
 ```bash
+# Listar projetos e obter o ID (formato PVT_...)
 gh api graphql -f query='
 query {
   user(login: "SEU_USUARIO") {
@@ -64,9 +99,7 @@ query {
 }'
 ```
 
-A resposta terá um campo `id` no formato `PVT_kwXXXXXXXXXXXX`. Anote o ID do projeto que deseja usar.
-
-**Depois, liste os campos do projeto para obter o ID do campo Status e das colunas (`PVTSSF_...` e os IDs hexadecimais):**
+Com o ID do projeto, obter os IDs do campo Status e das colunas:
 
 ```bash
 gh api graphql -f query='
@@ -87,52 +120,25 @@ query {
 }'
 ```
 
-A resposta terá algo como:
+A resposta retorna:
+- `id` do campo Status → formato `PVTSSF_...` → valor de `status_field`
+- `id` de cada opção → formato hexadecimal curto → valores de `status_realizar`, `status_em_andamento`, `status_realizado`
 
-```json
-{
-  "id": "PVTSSF_lAXXXXXXXXXXXXXX",
-  "name": "Status",
-  "options": [
-    { "id": "aaaaaaaa", "name": "Realizar" },
-    { "id": "bbbbbbbb", "name": "Em andamento" },
-    { "id": "cccccccc", "name": "Realizado" }
-  ]
-}
-```
+### Passo 3 — Configurar o secret `PROJECT_TOKEN`
 
-Anote:
-- `id` do campo Status → `PVTSSF_...` — vai para `status_field` no caller
-- `id` de cada opção → vai para `status_realizar`, `status_em_andamento` e `status_realizado`
+Crie um Personal Access Token com escopos `repo` e `project` em **Settings > Developer settings > Personal access tokens**.
 
----
-
-### Passo 3 — Criar o PAT `PROJECT_TOKEN`
-
-Crie um Personal Access Token em **github.com > Settings > Developer settings > Personal access tokens** com os escopos:
-
-- `repo` — acesso aos repositórios
-- `project` — leitura e escrita no GitHub Projects V2
-
-Adicione como secret no repositório onde quer usar os workflows:
+Adicione como secret no repositório:
 **Settings > Secrets and variables > Actions > New repository secret**
 Nome: `PROJECT_TOKEN`
 
-Se preferir configurar uma única vez para todos os repos, adicione na sua conta em **Settings > Secrets and variables > Actions** e use `secrets: inherit` no caller — o secret será propagado automaticamente.
+> **Importante:** o `secrets: inherit` propaga secrets do repositório caller para workflows do mesmo owner (`mauriciogofas`). Workflows hospedados em contas ou organizações diferentes não recebem os secrets — nesses casos é necessário fazer fork dos workflows para o próprio owner.
 
----
+### Passo 4 — Criar os callers no repositório
 
-### Passo 4 — Criar os callers no seu repositório
+Copie os arquivos `.example` como ponto de partida. Estão em `.github/workflows/` e não são executados pelo GitHub Actions por terem extensão `.example`.
 
-Copie os arquivos `.example` deste repo como ponto de partida. Eles ficam em `.github/workflows/` e não são executados pelo GitHub Actions por terem extensão `.example`.
-
-Crie dois arquivos no seu repositório em `.github/workflows/`:
-
----
-
-#### `changelog-caller.yml`
-
-Baseado em [`changelog-caller.yml.example`](.github/workflows/changelog-caller.yml.example):
+**`.github/workflows/changelog-caller.yml`**
 
 ```yaml
 name: Changelog
@@ -145,7 +151,7 @@ jobs:
   changelog:
     permissions:
       contents: write
-    uses: SEU_USUARIO/.github/.github/workflows/changelog.yml@master
+    uses: mauriciogofas/.github/.github/workflows/changelog.yml@master
     with:
       git_user: "seu-usuario-github"
       git_name: "Seu Nome"
@@ -153,20 +159,14 @@ jobs:
     secrets: inherit
 ```
 
-**Linhas a editar:**
-
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 11 | `uses:` | Substituir `SEU_USUARIO` pelo seu usuário GitHub |
+| 11 | `uses:` | Substituir `mauriciogofas` pelo seu usuário se tiver feito fork |
 | 13 | `git_user:` | Seu usuário GitHub (usado na URL do push) |
 | 14 | `git_name:` | Seu nome para o commit |
 | 15 | `git_email:` | Seu email para o commit |
 
----
-
-#### `project-sync-caller.yml`
-
-Baseado em [`project-sync-caller.yml.example`](.github/workflows/project-sync-caller.yml.example):
+**`.github/workflows/project-sync-caller.yml`**
 
 ```yaml
 name: Project Sync
@@ -178,7 +178,7 @@ on:
       - closed
 jobs:
   sync:
-    uses: SEU_USUARIO/.github/.github/workflows/project-sync.yml@master
+    uses: mauriciogofas/.github/.github/workflows/project-sync.yml@master
     with:
       issue_url: ${{ github.event.issue.html_url }}
       issue_state: ${{ github.event.issue.state }}
@@ -191,18 +191,16 @@ jobs:
     secrets: inherit
 ```
 
-**Linhas a editar:**
-
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 10 | `uses:` | Substituir `SEU_USUARIO` pelo seu usuário GitHub |
-| 15 | `project_id:` | ID do projeto obtido no Passo 2 (`PVT_...`) |
-| 16 | `status_field:` | ID do campo Status obtido no Passo 2 (`PVTSSF_...`) |
-| 17 | `status_realizar:` | ID da opção "a fazer" obtido no Passo 2 |
-| 18 | `status_em_andamento:` | ID da opção "em progresso" obtido no Passo 2 |
-| 19 | `status_realizado:` | ID da opção "concluído" obtido no Passo 2 |
+| 10 | `uses:` | Substituir `mauriciogofas` pelo seu usuário se tiver feito fork |
+| 15 | `project_id:` | ID do projeto — Passo 2 |
+| 16 | `status_field:` | ID do campo Status — Passo 2 |
+| 17 | `status_realizar:` | ID da opção "a fazer" — Passo 2 |
+| 18 | `status_em_andamento:` | ID da opção "em progresso" — Passo 2 |
+| 19 | `status_realizado:` | ID da opção "concluído" — Passo 2 |
 
-As linhas 12, 13 e 14 (`issue_url`, `issue_state`, `issue_action`) não precisam ser editadas — são preenchidas automaticamente pelo GitHub com os dados do evento.
+As linhas 12, 13 e 14 (`issue_url`, `issue_state`, `issue_action`) são preenchidas automaticamente pelo GitHub — não editar.
 
 ---
 
@@ -210,33 +208,24 @@ As linhas 12, 13 e 14 (`issue_url`, `issue_state`, `issue_action`) não precisam
 
 **`github.event` não propaga em `workflow_call`**
 
-Ao usar `workflow_call`, o contexto `github.event` não é passado automaticamente para o workflow chamado. Por isso o caller passa `issue_url`, `issue_state` e `issue_action` explicitamente via `with:`. Nunca tente acessar `github.event.issue.*` dentro de um workflow reutilizável — estará vazio.
-
-**`PROJECT_TOKEN` deve existir no repo caller**
-
-Secrets do repositório hospedeiro (este repo `.github`) não propagam para repositórios externos. O `PROJECT_TOKEN` precisa estar configurado no repositório que invoca o workflow ou ser herdado de conta/organização via `secrets: inherit`.
-
-**Tags com `/` no nome quebram o auto-changelog**
-
-A action `charmixer/auto-changelog-action` falha se existirem tags com `/` no nome. Antes de usar o workflow pela primeira vez, verifique:
-
-```bash
-git tag | grep /
-```
-
-Para remover:
-```bash
-git tag -d "nome/da/tag"
-git push origin --delete "nome/da/tag"
-```
+O contexto `github.event` não é passado automaticamente para o workflow chamado. Por isso o caller passa `issue_url`, `issue_state` e `issue_action` explicitamente via `with:`. Nunca tente acessar `github.event.issue.*` dentro de um workflow reutilizável — estará vazio.
 
 **Ordem correta ao publicar uma release**
 
-Feche todos os issues relevantes primeiro, aguarde o workflow de changelog concluir e só então crie a release. Se criar a release antes de fechar os issues, eles aparecerão em uma seção "Unreleased" no changelog. Para corrigir: reabra e feche novamente o issue para retriggar o workflow.
+Feche todos os issues relevantes primeiro e aguarde o workflow de changelog concluir. Criar a release antes de fechar os issues faz com que eles apareçam no próximo ciclo em vez do bloco da release atual.
+
+**`section_map` opcional**
+
+O `changelog.yml` aceita um input opcional `section_map` (JSON) para sobrescrever os títulos das seções. Exemplo no caller:
+
+```yaml
+with:
+  section_map: '{"bug":"Bugs corrigidos","enhancement":"Funcionalidades"}'
+```
 
 ---
 
-## Estrutura deste repositório
+## Estrutura do repositório
 
 ```
 .github/
@@ -246,6 +235,16 @@ Feche todos os issues relevantes primeiro, aguarde o workflow de changelog concl
     run-changelog.yml                  # caller deste próprio repo
     changelog-caller.yml.example       # template para copiar para o seu repo
     project-sync-caller.yml.example    # template para copiar para o seu repo
-README.md
+readme.md
 changelog.md                           # gerado automaticamente
 ```
+
+---
+
+## Nota técnica sobre privacidade
+
+Os workflows deste repositório não coletam, armazenam nem recebem nenhum dado sobre quem os utiliza. Quando um repositório externo chama `uses: mauriciogofas/.github/...`, o workflow roda inteiramente no runner do GitHub associado ao repositório caller — não neste. Runs de workflows reutilizáveis chamados externamente aparecem apenas no repositório caller e são invisíveis para `mauriciogofas/.github`. Para que fosse possível receber qualquer dado, o workflow precisaria fazer uma chamada explícita para um endpoint externo — o que não existe aqui. O código dos workflows pode ser auditado diretamente neste repositório.
+
+---
+
+<p align="center">© 2026 <a href="https://gofas.net/?utm_source=github&utm_medium=readme&utm_campaign=opensource">Gofas Software</a></p>
