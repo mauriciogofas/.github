@@ -152,7 +152,7 @@ jobs:
           history_match = re.search(r'(## \[v\d+\.\d+\.\d+\])', existing)
           history = existing[history_match.start():].strip() if history_match else ""
           # Remover rodapé do charmixer se presente
-          history = re.sub(r'\n\\\* \*This Changelog.*', '', history).strip()
+          history = re.sub(r'\n+\\\\?\* \*This Changelog[^\n]*', '', history).strip()
 
           # Montar novo bloco
           lines = ["# Changelog\n"]
