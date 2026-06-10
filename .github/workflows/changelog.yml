@@ -163,7 +163,7 @@ jobs:
               compare = (f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}"
                          if prev_tag else f"https://github.com/{repo}/releases/tag/{release_tag}")
 
-              out.append(f"## [{dname}](https://github.com/{repo}/releases/tag/{release_tag}) ({rd})\n")
+              out.append(f"## [{dname} - {rd}](https://github.com/{repo}/releases/tag/{release_tag})\n")
               out.extend(build_section(issues))
               out.append(f"\n[Changelog detalhado]({compare})\n")
 
