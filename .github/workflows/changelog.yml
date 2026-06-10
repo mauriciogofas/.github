@@ -37,34 +37,28 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
 
-          # Obter data da última release
+          # Última release
           LAST_RELEASE=$(gh api repos/$REPO/releases/latest --jq '.published_at' 2>/dev/null || echo "")
+          LAST_TAG=$(gh api repos/$REPO/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
 
-          # Buscar issues fechadas desde a última release (ou todas se não houver release)
+          # Issues fechadas desde a última release
           if [ -n "$LAST_RELEASE" ]; then
             SINCE="&since=$LAST_RELEASE"
-            LAST_TAG=$(gh api repos/$REPO/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
           else
             SINCE=""
-            LAST_TAG=""
           fi
 
-          # Buscar todas as issues fechadas
           ISSUES=$(gh api "repos/$REPO/issues?state=closed&per_page=100$SINCE" \
-            --jq '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, labels: [.labels[].name]}')
+            --jq '.[] | select(.pull_request == null) | {number: .number, title: .title, url: .html_url, labels: [.labels[] | {name: .name, color: .color}]}')
 
-          if [ -z "$ISSUES" ]; then
-            echo "Nenhuma issue encontrada."
-            exit 0
-          fi
+          # Labels do repo com cores
+          REPO_LABELS=$(gh api repos/$REPO/labels --paginate \
+            --jq '[.[] | {name: .name, color: .color}] | tostring')
 
-          # Buscar todas as labels do repo
-          REPO_LABELS=$(gh api repos/$REPO/labels --paginate --jq '.[].name')
-
-          # Gerar changelog.md com python
           python3 << PYEOF
-          import json, os, sys
+          import json, os, sys, re
           from datetime import datetime
+          from urllib.parse import quote
 
           issues_raw = """$ISSUES"""
           repo_labels_raw = """$REPO_LABELS"""
@@ -72,7 +66,7 @@ jobs:
           last_tag = "$LAST_TAG"
           repo = "$REPO"
 
-          # Parsear label_map customizado se fornecido
+          # Label map customizado
           label_map = {}
           if label_map_raw.strip():
               try:
@@ -80,10 +74,21 @@ jobs:
               except:
                   pass
 
-          # Coletar labels do repo como categorias
-          repo_labels = [l.strip() for l in repo_labels_raw.strip().splitlines() if l.strip()]
+          # Labels do repo: {name: color}
+          repo_labels = {}
+          try:
+              for l in json.loads(repo_labels_raw):
+                  repo_labels[l["name"]] = l["color"]
+          except:
+              pass
 
-          # Parsear issues (cada linha é um JSON)
+          # Badge shields.io para uma label
+          def badge(name, color):
+              display = label_map.get(name, name)
+              safe_name = quote(display.replace("-", "--").replace("_", "__").replace(" ", "_"))
+              return f"![{display}](https://img.shields.io/badge/{safe_name}-{color}?style=flat-square)"
+
+          # Parsear issues
           issues = []
           for line in issues_raw.strip().splitlines():
               line = line.strip()
@@ -98,56 +103,64 @@ jobs:
               print("Nenhuma issue para processar.")
               sys.exit(0)
 
-          # Agrupar issues por label
-          categorized = {}   # label -> [issues]
-          uncategorized = [] # issues sem label
+          # Agrupar por primeira label — cada issue aparece só uma vez
+          # Badge de todas as labels aparece ao lado
+          categorized = {}   # label_name -> [issues]
+          uncategorized = []
+          placed = set()
 
           for issue in issues:
               labels = issue.get("labels", [])
               if not labels:
                   uncategorized.append(issue)
               else:
-                  for label in labels:
-                      if label not in categorized:
-                          categorized[label] = []
-                      categorized[label].append(issue)
+                  first = labels[0]["name"]
+                  if first not in categorized:
+                      categorized[first] = []
+                  categorized[first].append(issue)
 
-          # Ler changelog.md existente para preservar histórico
+          # Ler changelog.md existente — preservar apenas blocos de release (## [vX.Y.Z])
           try:
               with open("changelog.md", "r") as f:
                   existing = f.read()
           except:
               existing = ""
 
-          # Remover bloco Unreleased anterior se existir
-          import re
-          existing = re.sub(r'## \[Unreleased\].*?(?=## \[|\Z)', '', existing, flags=re.DOTALL).strip()
+          # Remover tudo antes do primeiro bloco de release versionado
+          history_match = re.search(r'(## \[v\d)', existing)
+          history = existing[history_match.start():].strip() if history_match else ""
 
           # Montar novo bloco Unreleased
           today = datetime.now().strftime("%d/%m/%Y")
-          lines = []
-          lines.append("# Changelog\n")
+          lines = ["# Changelog\n"]
           lines.append(f"## [Unreleased](https://github.com/{repo}/tree/HEAD) — {today}\n")
-
           if last_tag:
               lines.append(f"[Full Changelog](https://github.com/{repo}/compare/{last_tag}...HEAD)\n")
 
-          # Seções por label
-          for label in repo_labels:
-              if label not in categorized:
+          # Ordem: labels na ordem em que aparecem no repo
+          for label_name, label_color in repo_labels.items():
+              if label_name not in categorized:
                   continue
-              section_title = label_map.get(label, label)
+              section_title = label_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
-              for issue in categorized[label]:
-                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+              for issue in categorized[label_name]:
+                  all_badges = " ".join(
+                      badge(l["name"], l["color"])
+                      for l in issue["labels"]
+                  )
+                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']}) {all_badges}")
 
-          # Issues com labels que não estão nas labels do repo (edge case)
-          extra_labels = [l for l in categorized if l not in repo_labels]
-          for label in extra_labels:
-              section_title = label_map.get(label, label)
+          # Labels fora do repo (edge case)
+          extra = [l for l in categorized if l not in repo_labels]
+          for label_name in extra:
+              section_title = label_map.get(label_name, label_name)
               lines.append(f"\n**{section_title}:**\n")
-              for issue in categorized[label]:
-                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
+              for issue in categorized[label_name]:
+                  all_badges = " ".join(
+                      badge(l["name"], l["color"])
+                      for l in issue["labels"]
+                  )
+                  lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']}) {all_badges}")
 
           # Sem label
           if uncategorized:
@@ -156,15 +169,10 @@ jobs:
                   lines.append(f"- {issue['title']} [\\#{issue['number']}]({issue['url']})")
 
           new_block = "\n".join(lines)
-
-          # Juntar com histórico existente
-          if existing:
-              final = new_block + "\n\n" + existing
-          else:
-              final = new_block
+          final = new_block + ("\n\n" + history if history else "") + "\n"
 
           with open("changelog.md", "w") as f:
-              f.write(final + "\n")
+              f.write(final)
 
           print("changelog.md gerado com sucesso.")
           PYEOF
