@@ -127,7 +127,13 @@ jobs:
               print("Nenhuma issue para processar.")
               sys.exit(0)
 
-          # Agrupar pela primeira label — cada issue aparece só uma vez
+          # Ordem de prioridade das seções
+          ordered_labels = list(default_section_map.keys())
+          extra_labels = [l for l in repo_labels if l not in ordered_labels]
+          label_order = ordered_labels + extra_labels
+
+          # Agrupar pela label de maior prioridade segundo label_order
+          # Cada issue aparece só uma vez, na seção de maior prioridade
           categorized = {}
           uncategorized = []
 
@@ -136,10 +142,15 @@ jobs:
               if not labels:
                   uncategorized.append(issue)
               else:
-                  first = labels[0]["name"]
-                  if first not in categorized:
-                      categorized[first] = []
-                  categorized[first].append(issue)
+                  label_names = [l["name"] for l in labels]
+                  # Encontrar a label de maior prioridade na label_order
+                  primary = next(
+                      (l for l in label_order if l in label_names),
+                      label_names[0]  # fallback: primeira retornada pela API
+                  )
+                  if primary not in categorized:
+                      categorized[primary] = []
+                  categorized[primary].append(issue)
 
           # Preservar apenas blocos de release versionados — remover tudo que não corresponde ao padrão
           try:
@@ -155,10 +166,6 @@ jobs:
           history = re.sub(r'\n+\\\* \*This Changelog[^\n]*', '', history).strip()
 
           # Reordenar seções: usar ordem do section_map (enhancement antes de bug)
-          ordered_labels = list(default_section_map.keys())
-          extra_labels = [l for l in repo_labels if l not in ordered_labels]
-          label_order = ordered_labels + extra_labels
-
           # Montar novo bloco
           lines = ["# Changelog\n"]
           lines.append(f"## [Próxima release](https://github.com/{repo}/tree/HEAD)\n")
