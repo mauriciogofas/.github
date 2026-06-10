@@ -12,25 +12,39 @@ on:
       issue_action:
         required: false
         type: string
+      project_id:
+        required: true
+        type: string
+      status_field:
+        required: true
+        type: string
+      status_realizar:
+        required: true
+        type: string
+      status_em_andamento:
+        required: true
+        type: string
+      status_realizado:
+        required: true
+        type: string
 
 jobs:
   sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Add issue to Project 4 and update status
+      - name: Add issue to project and update status
         env:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           ISSUE_URL: ${{ inputs.issue_url }}
           ISSUE_STATE: ${{ inputs.issue_state }}
           ISSUE_ACTION: ${{ inputs.issue_action }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          STATUS_FIELD: ${{ inputs.status_field }}
+          STATUS_REALIZAR: ${{ inputs.status_realizar }}
+          STATUS_EM_ANDAMENTO: ${{ inputs.status_em_andamento }}
+          STATUS_REALIZADO: ${{ inputs.status_realizado }}
         run: |
-          PROJECT_ID="PVT_kwHOAHMMY84BZclp"
-          STATUS_FIELD="PVTSSF_lAHOAHMMY84BZclpzhUbK4Y"
-          STATUS_REALIZAR="f75ad846"
-          STATUS_EM_ANDAMENTO="47fc9ee4"
-          STATUS_REALIZADO="98236657"
-
           OWNER=$(echo "$ISSUE_URL" | cut -d'/' -f4)
           REPO=$(echo "$ISSUE_URL" | cut -d'/' -f5)
           NUMBER=$(echo "$ISSUE_URL" | cut -d'/' -f7)
