@@ -12,6 +12,10 @@ on:
       git_email:
         required: true
         type: string
+      label_map:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   generate_changelog:
@@ -34,6 +38,7 @@ jobs:
           token: ${{ secrets.PROJECT_TOKEN }}
           output: changelog.md
           date_format: '%d/%m/%Y'
+          label_map: ${{ inputs.label_map }}
 
       - name: Commit and push
         env:
