@@ -33,7 +33,7 @@ A cada issue aberta, reaberta ou fechada, o workflow:
 
 No GitHub, acesse **Projects > New project > Board**.
 
-Adicione três colunas com exatamente estes nomes (ou os nomes que preferir — você vai mapear os IDs logo abaixo):
+Adicione três colunas (com estes nomes, ou os nomes que preferir — você vai mapear os IDs logo abaixo):
 
 - **Realizar** — issues a fazer
 - **Em andamento** — issues em progresso
