@@ -7,6 +7,9 @@ on:
       - closed
 jobs:
   sync:
+    # Repos da conta mauriciogofas: usar mauriciogofas/.github
+    # Repos de outra conta/org: fazer fork deste repo e apontar para o fork
+    # (secrets: inherit não propaga cross-account/cross-org)
     uses: SEU_USUARIO/.github/.github/workflows/project-sync.yml@master
     with:
       issue_url: ${{ github.event.issue.html_url }}
