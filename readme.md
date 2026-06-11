@@ -44,10 +44,12 @@ A cada release publicada ou issue fechada/editada, o workflow reconstrói o `cha
 
 | Seção | Critério |
 |---|---|
+| **Melhorias** | Label `enhancement`, `melhoria`, `melhorias` — ou sem label alguma |
 | **Correções** | Label contém: `bug`, `erro`, `error`, `fix`, `hotfix` |
-| **Melhorias** | Label padrão de melhoria ou nenhuma label |
 | **Seção própria** | 2+ issues com a mesma label não-padrão |
 | **Vale mencionar** | Issues com label não-padrão sem grupo suficiente |
+
+A classificação verifica Melhorias primeiro: se o issue tem label `melhoria` e também `bug`, vai para Melhorias. Correções só é aplicado quando não há label de melhoria.
 
 - Issues com múltiplas labels são classificados pela label de maior prioridade (Correções > Melhorias > demais)
 - Labels são exibidas à direita do issue com cor `#a99c9c`, sem sublinhado e com link para filtro no GitHub
@@ -132,11 +134,11 @@ Adicione como secret no repositório:
 **Settings > Secrets and variables > Actions > New repository secret**
 Nome: `PROJECT_TOKEN`
 
-> **Importante:** o `secrets: inherit` propaga secrets do repositório caller para workflows do mesmo owner (`mauriciogofas`). Workflows hospedados em contas ou organizações diferentes não recebem os secrets — nesses casos é necessário fazer fork dos workflows para o próprio owner.
+> **Como funciona o `secrets: inherit`:** quando seu repositório usa `secrets: inherit` para chamar um workflow em `mauriciogofas/.github`, o GitHub passa automaticamente os secrets do seu repositório para o workflow — desde que seu repositório também pertença à conta `mauriciogofas`. Se o seu repositório estiver em outra conta ou organização, o `secrets: inherit` não funciona cross-owner: o workflow chamado recebe os secrets vazios. Nesse caso, faça um fork de `mauriciogofas/.github` para a sua própria conta e aponte o caller para o seu fork — assim os secrets propagam normalmente.
 
 ### Passo 4 — Criar os callers no repositório
 
-Copie os arquivos `.example` como ponto de partida. Estão em `.github/workflows/` e não são executados pelo GitHub Actions por terem extensão `.example`.
+Copie os arquivos [`.example`](../../tree/master/.github/workflows) como ponto de partida. Estão em [`.github/workflows/`](../../tree/master/.github/workflows) e não são executados pelo GitHub Actions por terem extensão `.example`.
 
 **`.github/workflows/changelog-caller.yml`**
 
@@ -161,7 +163,7 @@ jobs:
 
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 11 | `uses:` | Substituir `mauriciogofas` pelo seu usuário se tiver feito fork |
+| 11 | `uses:` | Manter `mauriciogofas` se seu repo pertence à conta `mauriciogofas`. Substituir pelo seu usuário **somente se tiver feito fork** do `.github` para outra conta |
 | 13 | `git_user:` | Seu usuário GitHub (usado na URL do push) |
 | 14 | `git_name:` | Seu nome para o commit |
 | 15 | `git_email:` | Seu email para o commit |
@@ -193,7 +195,7 @@ jobs:
 
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 10 | `uses:` | Substituir `mauriciogofas` pelo seu usuário se tiver feito fork |
+| 10 | `uses:` | Manter `mauriciogofas` se seu repo pertence à conta `mauriciogofas`. Substituir pelo seu usuário **somente se tiver feito fork** do `.github` para outra conta |
 | 15 | `project_id:` | ID do projeto — Passo 2 |
 | 16 | `status_field:` | ID do campo Status — Passo 2 |
 | 17 | `status_realizar:` | ID da opção "a fazer" — Passo 2 |
@@ -205,6 +207,14 @@ As linhas 12, 13 e 14 (`issue_url`, `issue_state`, `issue_action`) são preenchi
 ---
 
 ## Observações importantes
+
+**Issues excluídos saem do projeto automaticamente**
+
+Quando um issue é excluído no GitHub, ele é removido do GitHub Projects automaticamente — esse comportamento é nativo da plataforma e independe deste workflow.
+
+**Fechar e reabrir um issue**
+
+Além de mover o issue para a coluna **Em andamento** no projeto, reabrir um issue faz com que ele reapareça na seção **Próxima atualização** do changelog na próxima execução — já que volta a ser um issue fechado após a última release. É um comportamento natural do fluxo que funciona como indicação de retrabalho em andamento.
 
 **`github.event` não propaga em `workflow_call`**
 
