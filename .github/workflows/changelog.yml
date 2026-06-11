@@ -104,16 +104,16 @@ jobs:
               return f'<a href="{filter_url}" style="color:#a99c9c;text-decoration:none"><code>{name}</code></a>'  
 
           # Labels padrão que classificam o issue como Melhorias ou Correções
-          DEFAULT_LABELS = {"melhoria", "melhorias", "enhancement", "bug", "erro", "error", "fix", "hotfix"}
+          MELHORIA_LABELS = {"melhoria", "melhorias", "enhancement"}
 
-          def has_default_label(names):
-              return any(n.lower() in DEFAULT_LABELS for n in names)
+          def has_melhoria_label(names):
+              return any(n.lower() in MELHORIA_LABELS for n in names)
 
           def fmt_issue(issue):
               num  = issue["number"]
               tags = " ".join(label_tag(l["name"]) for l in issue["labels"])
               suffix = f" {tags}" if tags else ""
-              return f"- {issue['title']} | [#{num}]({issue['url']}){suffix}"
+              return f"- {issue['title']} - [#{num}]({issue['url']}){suffix}"
 
           def build_section(issues):
               if not issues:
@@ -127,18 +127,16 @@ jobs:
               for issue in issues:
                   labels = issue.get("labels", [])
                   names  = [l["name"] for l in labels]
-                  if any(is_bug_label(n) for n in names):
-                      correcoes.append(issue)
-                  elif has_default_label(names):
-                      melhorias.append(issue)
+                  if not names:
+                      melhorias.append(issue)  # sem label: default Melhorias
+                  elif has_melhoria_label(names):
+                      melhorias.append(issue)  # label explícita de melhoria
+                  elif any(is_bug_label(n) for n in names):
+                      correcoes.append(issue)  # label de bug/fix
                   else:
-                      # Issue sem label padrão — candidato a seção extra
-                      if not names:
-                          melhorias.append(issue)  # sem label alguma: default melhorias
-                      else:
-                          # Usar primeira label como chave de agrupamento
-                          key = names[0]
-                          extra_by_label.setdefault(key, []).append(issue)
+                      # Label não-padrão — candidato a seção extra
+                      key = names[0]
+                      extra_by_label.setdefault(key, []).append(issue)
 
               # Separar grupos com 2+ issues de avulsos
               grouped_extras  = {k: v for k, v in extra_by_label.items() if len(v) >= 2}
