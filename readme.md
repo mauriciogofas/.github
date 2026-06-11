@@ -1,11 +1,22 @@
-# mauriciogofas/.github — Workflows Globais
+# Gofas Global Workflows
 
-Repositório central de workflows reutilizáveis para todos os repositórios da conta [`mauriciogofas`](https://github.com/mauriciogofas).
+**Para repositórios que se organizam sozinhos e projetos que se documentam por conta própria enquanto evoluem**
 
-Dois workflows estão disponíveis:
+Dois workflows reutilizáveis prontos para usar em qualquer repositório GitHub:
 
 1. **`changelog.yml`** — gera e commita `changelog.md` automaticamente a cada release publicada ou issue fechada
 2. **`project-sync.yml`** — adiciona issues ao GitHub Projects V2 e move entre colunas conforme o status
+
+---
+
+## Passo 0 — Fork obrigatório
+
+Estes workflows dependem de secrets do seu repositório para autenticar chamadas à API do GitHub. O GitHub só propaga secrets para workflows hospedados na mesma conta — por isso o fork é obrigatório.
+
+1. Acesse [github.com/mauriciogofas/.github](https://github.com/mauriciogofas/.github)
+2. Clique em **Fork**
+3. Selecione sua conta como destino
+4. Nos callers, aponte `uses:` para `SEU_USUARIO/.github/.github/workflows/...@master`
 
 ---
 
@@ -13,7 +24,7 @@ Dois workflows estão disponíveis:
 
 ### `changelog.yml`
 
-A cada release publicada ou issue fechada/editada, o workflow reconstrói o `changelog.md` **completo do zero** a partir de todos os dados do repositório — sem depender do conteúdo anterior do arquivo. Isso significa que apagar o `changelog.md` e fechar qualquer issue o regenera integralmente com todo o histórico.
+A cada release publicada ou issue fechada/editada, o workflow reconstrói o `changelog.md` **completo do zero** a partir de todos os dados do repositório — sem depender do conteúdo anterior do arquivo. Apagar o `changelog.md` e fechar qualquer issue o regenera integralmente com todo o histórico.
 
 **Estrutura gerada:**
 
@@ -23,15 +34,15 @@ A cada release publicada ou issue fechada/editada, o workflow reconstrói o `cha
 ## [Próxima atualização](url)
 
 **Melhorias:**
-- Título do issue | #N `label`
+- Título do issue - #N `label`
 
 **Correções:**
-- Título do issue | #N `label`
+- Título do issue - #N `label`
 
 **Docs:**              ← seção extra quando 2+ issues têm a mesma label não-padrão
 - ...
 
-**Vale mencionar:**    ← issues com labels avulsas (sem grupo suficiente)
+**Vale mencionar:**    ← issues com labels avulsas sem grupo suficiente
 - ...
 
 [Comparar versões](url)
@@ -51,8 +62,8 @@ A cada release publicada ou issue fechada/editada, o workflow reconstrói o `cha
 
 A classificação verifica Melhorias primeiro: se o issue tem label `melhoria` e também `bug`, vai para Melhorias. Correções só é aplicado quando não há label de melhoria.
 
-- Issues com múltiplas labels são classificados pela label de maior prioridade (Correções > Melhorias > demais)
-- Labels são exibidas à direita do issue com cor `#a99c9c`, sem sublinhado e com link para filtro no GitHub
+- Issues com múltiplas labels são classificados pela label de maior prioridade
+- Labels são exibidas à direita do issue com link para filtro no GitHub
 - Nomes de seções extras são capitalizados automaticamente (`docs` → `Docs:`)
 - O bloco "Próxima atualização" lista issues fechados após a última release
 - Cada bloco de release lista apenas os issues fechados no intervalo entre ela e a release anterior
@@ -60,6 +71,10 @@ A classificação verifica Melhorias primeiro: se o issue tem label `melhoria` e
 **Quando uma release é criada:**
 
 O bloco "Próxima atualização" é automaticamente convertido em `## [v2.0.0 - 10/06/2026]` com link para a release e "Comparar versões" apontando para o diff com a versão anterior.
+
+**Fechar e reabrir um issue:**
+
+Além de mover o issue para **Em andamento** no projeto, reabrir um issue faz com que ele reapareça na seção **Próxima atualização** do changelog na próxima execução — útil para sinalizar retrabalho em andamento.
 
 ---
 
@@ -73,7 +88,9 @@ A cada issue aberta, reaberta ou fechada, o workflow:
    - `opened` → **Realizar**
    - `reopened` → **Em andamento**
    - `closed` → **Realizado**
-4. Move o item para o topo do board via `updateProjectV2ItemPosition`
+4. Move o item para o topo do board
+
+Quando um issue é excluído no GitHub, ele é removido do projeto automaticamente — comportamento nativo da plataforma, independente deste workflow.
 
 ---
 
@@ -134,11 +151,9 @@ Adicione como secret no repositório:
 **Settings > Secrets and variables > Actions > New repository secret**
 Nome: `PROJECT_TOKEN`
 
-> **Como funciona o `secrets: inherit`:** quando seu repositório usa `secrets: inherit` para chamar um workflow em `mauriciogofas/.github`, o GitHub passa automaticamente os secrets do seu repositório para o workflow — desde que seu repositório também pertença à conta `mauriciogofas`. Se o seu repositório estiver em outra conta ou organização, o `secrets: inherit` não funciona cross-owner: o workflow chamado recebe os secrets vazios. Nesse caso, faça um fork de `mauriciogofas/.github` para a sua própria conta e aponte o caller para o seu fork — assim os secrets propagam normalmente.
-
 ### Passo 4 — Criar os callers no repositório
 
-Copie os arquivos [`.example`](../../tree/master/.github/workflows) como ponto de partida. Estão em [`.github/workflows/`](../../tree/master/.github/workflows) e não são executados pelo GitHub Actions por terem extensão `.example`.
+Copie os arquivos [`.example`](../../tree/master/.github/workflows) em [`.github/workflows/`](../../tree/master/.github/workflows) como ponto de partida — não são executados pelo GitHub Actions por terem extensão `.example`.
 
 **`.github/workflows/changelog-caller.yml`**
 
@@ -153,7 +168,7 @@ jobs:
   changelog:
     permissions:
       contents: write
-    uses: mauriciogofas/.github/.github/workflows/changelog.yml@master
+    uses: SEU_USUARIO/.github/.github/workflows/changelog.yml@master
     with:
       git_user: "seu-usuario-github"
       git_name: "Seu Nome"
@@ -163,7 +178,7 @@ jobs:
 
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 11 | `uses:` | Manter `mauriciogofas` se seu repo pertence à conta `mauriciogofas`. Substituir pelo seu usuário **somente se tiver feito fork** do `.github` para outra conta |
+| 11 | `uses:` | Seu usuário GitHub (do fork) |
 | 13 | `git_user:` | Seu usuário GitHub (usado na URL do push) |
 | 14 | `git_name:` | Seu nome para o commit |
 | 15 | `git_email:` | Seu email para o commit |
@@ -180,7 +195,7 @@ on:
       - closed
 jobs:
   sync:
-    uses: mauriciogofas/.github/.github/workflows/project-sync.yml@master
+    uses: SEU_USUARIO/.github/.github/workflows/project-sync.yml@master
     with:
       issue_url: ${{ github.event.issue.html_url }}
       issue_state: ${{ github.event.issue.state }}
@@ -195,7 +210,7 @@ jobs:
 
 | Linha | Campo | O que colocar |
 |---|---|---|
-| 10 | `uses:` | Manter `mauriciogofas` se seu repo pertence à conta `mauriciogofas`. Substituir pelo seu usuário **somente se tiver feito fork** do `.github` para outra conta |
+| 10 | `uses:` | Seu usuário GitHub (do fork) |
 | 15 | `project_id:` | ID do projeto — Passo 2 |
 | 16 | `status_field:` | ID do campo Status — Passo 2 |
 | 17 | `status_realizar:` | ID da opção "a fazer" — Passo 2 |
@@ -206,19 +221,7 @@ As linhas 12, 13 e 14 (`issue_url`, `issue_state`, `issue_action`) são preenchi
 
 ---
 
-## Observações importantes
-
-**Issues excluídos saem do projeto automaticamente**
-
-Quando um issue é excluído no GitHub, ele é removido do GitHub Projects automaticamente — esse comportamento é nativo da plataforma e independe deste workflow.
-
-**Fechar e reabrir um issue**
-
-Além de mover o issue para a coluna **Em andamento** no projeto, reabrir um issue faz com que ele reapareça na seção **Próxima atualização** do changelog na próxima execução — já que volta a ser um issue fechado após a última release. É um comportamento natural do fluxo que funciona como indicação de retrabalho em andamento.
-
-**`github.event` não propaga em `workflow_call`**
-
-O contexto `github.event` não é passado automaticamente para o workflow chamado. Por isso o caller passa `issue_url`, `issue_state` e `issue_action` explicitamente via `with:`. Nunca tente acessar `github.event.issue.*` dentro de um workflow reutilizável — estará vazio.
+## Observações
 
 **Ordem correta ao publicar uma release**
 
@@ -226,12 +229,16 @@ Feche todos os issues relevantes primeiro e aguarde o workflow de changelog conc
 
 **`section_map` opcional**
 
-O `changelog.yml` aceita um input opcional `section_map` (JSON) para sobrescrever os títulos das seções. Exemplo no caller:
+O `changelog.yml` aceita um input opcional `section_map` (JSON) para sobrescrever os títulos das seções:
 
 ```yaml
 with:
   section_map: '{"bug":"Bugs corrigidos","enhancement":"Funcionalidades"}'
 ```
+
+**`github.event` não propaga em `workflow_call`**
+
+O contexto `github.event` não é passado automaticamente para o workflow chamado. Por isso o caller passa `issue_url`, `issue_state` e `issue_action` explicitamente via `with:`. Nunca tente acessar `github.event.issue.*` dentro de um workflow reutilizável — estará vazio.
 
 ---
 
@@ -242,7 +249,6 @@ with:
   workflows/
     changelog.yml                      # workflow reutilizável — gera changelog.md
     project-sync.yml                   # workflow reutilizável — sincroniza issues com projeto
-    run-changelog.yml                  # caller deste próprio repo
     changelog-caller.yml.example       # template para copiar para o seu repo
     project-sync-caller.yml.example    # template para copiar para o seu repo
 readme.md
@@ -253,7 +259,7 @@ changelog.md                           # gerado automaticamente
 
 ## Nota técnica sobre privacidade
 
-Os workflows deste repositório não coletam, armazenam nem recebem nenhum dado sobre quem os utiliza. Quando um repositório externo chama `uses: mauriciogofas/.github/...`, o workflow roda inteiramente no runner do GitHub associado ao repositório caller — não neste. Runs de workflows reutilizáveis chamados externamente aparecem apenas no repositório caller e são invisíveis para `mauriciogofas/.github`. Para que fosse possível receber qualquer dado, o workflow precisaria fazer uma chamada explícita para um endpoint externo — o que não existe aqui. O código dos workflows pode ser auditado diretamente neste repositório.
+Os workflows deste repositório não coletam, armazenam nem recebem nenhum dado sobre quem os utiliza. Quando um repositório externo chama `uses: SEU_USUARIO/.github/...` a partir do seu fork, o workflow roda inteiramente no runner do GitHub associado ao repositório caller. O código dos workflows pode ser auditado diretamente neste repositório.
 
 ---
 
