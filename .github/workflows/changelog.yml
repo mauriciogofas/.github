@@ -208,7 +208,7 @@ jobs:
 
       - name: Generate changelog from issues
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           SECTION_MAP: ${{ inputs.section_map }}
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -219,7 +219,7 @@ jobs:
 
       - name: Commit and push
         env:
-          PUSH_TOKEN: ${{ github.token }}
+          PUSH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           GIT_USER: ${{ inputs.git_user }}
           GIT_NAME: ${{ inputs.git_name }}
           GIT_EMAIL: ${{ inputs.git_email }}
